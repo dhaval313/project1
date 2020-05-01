@@ -1,0 +1,24 @@
+tables:
+    books:
+        id
+        isbn
+        title
+        author
+        year
+    
+    users:
+        id
+        username
+        password
+    
+    reviews:
+        id
+        isbn - books table
+        user_id -  users table
+        review 
+
+    ratings:
+        id
+        isbn - book table   
+        ratings_count
+        avg_rating
