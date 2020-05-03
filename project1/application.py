@@ -1,4 +1,4 @@
-import os, requests
+import os, requests, json
 from flask import Flask, session, render_template, request, redirect, url_for, jsonify
 from flask_session import Session
 from sqlalchemy import create_engine
@@ -40,24 +40,28 @@ def login():
     else:
         return render_template("login.html")
 
-@app.route("/signup", methods=["POST"])
+@app.route("/signup", methods=["POST", "GET"])
 def signup():
-    username = db.execute("select username, password from users").fetchall()
-    usrnm = request.form['username']
-    paswrd = request.form['password']
-    f=0
-    for us in username:
-        if usrnm==us.username:
-            return render_template("login.html",headline="Username is taken.")    
+    if request.method == "POST":
+        username = db.execute("select username, password from users").fetchall()
+        usrnm = request.form['username']
+        paswrd = request.form['password']
+        f=0
+        for us in username:
+            if usrnm==us.username:
+                return render_template("login.html",headline="Username is taken.")    
 
-    if len(paswrd) <6:
-        return render_template("login.html",headline="Password must have minimum 6 letters.")
+        if len(paswrd) <6:
+            return render_template("login.html",headline="Password must have minimum 6 letters.")
 
-    paswrd = create_hash(paswrd)
-    db.execute("insert into users (username, password) values(:usrnm,:paswrd)",
-                {"usrnm": usrnm, "paswrd": paswrd})
-    db.commit()
-    return render_template("login.html",headline="Successfully signed up.")
+        paswrd = create_hash(paswrd)
+        db.execute("insert into users (username, password) values(:usrnm,:paswrd)",
+                    {"usrnm": usrnm, "paswrd": paswrd})
+        db.commit()
+        return render_template("login.html",headline="Successfully signed up.")
+    
+    else:
+        return render_template("error.html", err = "Invalid method.")
 
 @app.route("/home", methods=["POST", "GET"])
 def home():
@@ -76,10 +80,10 @@ def home():
         session["usr"]=user.id
         return render_template("home.html")
     else:
-        return render_template("index.html")
+        return render_template("error.html", err = "Invalid method.")
     db.commit()
 
-@app.route("/logout",methods=["GET"])
+@app.route("/logout",methods=["GET", "POST"])
 def logout():
     if 'usr' in session:
         session.pop('usr',None)
@@ -87,40 +91,44 @@ def logout():
 
 @app.route("/search",methods=["POST","GET"])
 def search():
-    name = request.form.get('search')
-    if name is None:
-        return render_template("home.html")
-    name=name.lower()
-    books = db.execute("select * from books").fetchall()
-    book = []
-    isbn = []
-    n=0
-    for i in books:
-        if name in i.isbn or name == '%'+i.isbn+'%':
-            book.append(f"{i.title} by {i.author} - {i.isbn}")
-            isbn.append(i.isbn)
-            n+=n
-            continue
-        
-        if name in (i.title).lower() or name == '%'+(i.title).lower()+'%':
-            book.append(f"{i.title} by {i.author} - {i.isbn}")
-            isbn.append(i.isbn)
-            n+=n
-            continue
-        
-        if name in (i.author).lower() or name == '%'+i.author.lower()+'%':
-            book.append(f"{i.title} by {i.author} - {i.isbn}")
-            isbn.append(i.isbn)
-            n+=n
-            continue
+    if request.method == "POST":
+        name = request.form.get('search')
+        if name is None:
+            return render_template("home.html")
+        name=name.lower()
+        books = db.execute("select * from books").fetchall()
+        book = []
+        isbn = []
+        n=0
+        for i in books:
+            if name in i.isbn or name == '%'+i.isbn+'%':
+                book.append(f"{i.title} by {i.author} - {i.isbn}")
+                isbn.append(i.isbn)
+                n+=n
+                continue
+            
+            if name in (i.title).lower() or name == '%'+(i.title).lower()+'%':
+                book.append(f"{i.title} by {i.author} - {i.isbn}")
+                isbn.append(i.isbn)
+                n+=n
+                continue
+            
+            if name in (i.author).lower() or name == '%'+i.author.lower()+'%':
+                book.append(f"{i.title} by {i.author} - {i.isbn}")
+                isbn.append(i.isbn)
+                n+=n
+                continue
 
-    if not book:
-        return render_template("search.html", err="No match found.")
+        if not book:
+            return render_template("search.html", err="No match found.")
+        
+        else:
+            book=zip(book,isbn)
+            return render_template("search.html", res=book)
+        db.commit()
     
     else:
-        book=zip(book,isbn)
-        return render_template("search.html", res=book)
-    db.commit()
+        return render_template("error.html", err = "Invalid method.")
 
 @app.route("/book/<string:isbn>", methods=["POST","GET"])
 def book(isbn):
@@ -128,14 +136,21 @@ def book(isbn):
         session.pop("book",None)
     session["book"] = isbn
     info = db.execute("select * from books where isbn = :isbn", {"isbn":isbn}).fetchone()
-    res = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": "OT2oBaEabBiJLpfBNPeEqA", "isbns": isbn})
-    data = res.json()
+    try:
+        res = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": "OT2oBaEabBiJLpfBNPeEqA", "isbns": isbn})
+        data = res.json()
+        ttl_ratings = data['books'][0]['work_ratings_count']
+        rating = data['books'][0]['average_rating']
+        
+    except json.decoder.JSONDecodeError:
+        ttl_ratings = "Not available."
+        rating = "Not available."
+
     title = info.title
     author = info.author
     revw=[]
     rev_usr=[]
-    ttl_ratings = data['books'][0]['work_ratings_count']
-    rating = data['books'][0]['average_rating']
+    rat = 0
     year = info.year
     reviews = db.execute("select * from reviews where isbn = :isbn",{"isbn":isbn}).fetchall()
     if not reviews:
@@ -145,31 +160,48 @@ def book(isbn):
         r = db.execute("select username from users where id = :id",{"id":reviews[i].user_id}).fetchone()
         rev_usr.append(r.username)
         revw.append(reviews[i].review)
+        rat += reviews[i].rating
     revw = zip(rev_usr,revw)
 
-    return render_template("book.html", isbn=isbn, title=title, author=author, ratings=ttl_ratings, rating=rating, year=year, reviews=revw)
+    wis_rating = rat/len(reviews)
+
+    return render_template("book.html", wisdom_rating = wis_rating, isbn=isbn, title=title, author=author, ratings=ttl_ratings, rating=rating, year=year, reviews=revw)
 
 @app.route("/review", methods=["POST","GET"])
 def rev_post():
     if request.method=="POST":
-        rev = request.form['review']
         usr_id = session["usr"]
         book = session["book"]
-        db.execute("insert into reviews (isbn, user_id, review) values (:isbn, :usr, :review)",
-                    {"isbn":book, "usr":usr_id, "review":rev})
+        
+        user_id = db.execute("select * from reviews where user_id = :usr and isbn = :book",{"usr": usr_id, "book": book}).fetchone()
+        if user_id is not None:
+            return redirect(url_for("book",isbn=book))
+
+        rat = request.form['rate']
+        rev = request.form['review']
+        db.execute("insert into reviews (isbn, user_id, review, rating) values (:isbn, :usr, :review, :rate)",
+                    {"isbn":book, "usr":usr_id, "review":rev, "rate": rat})     
         db.commit()
         
         return redirect(url_for("book",isbn=book))
+
+    else:
+        return render_template("error.html", err = "Invalid method.")
 
 @app.route("/api/<string:isbn>", methods=["GET"])
 def api(isbn):
     info = db.execute("select * from books where isbn = :isbn",{"isbn": isbn}).fetchone()
     if info is None:
-        return jsonify({"Invalid ISBN."}), 422
-    res = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": "OT2oBaEabBiJLpfBNPeEqA", "isbns": isbn})
-    data = res.json()
-    r_count = data["books"][0]["work_ratings_count"]
-    avg_r = data["books"][0]["average_rating"]
+        return render_template("error.html", err= 404)
+    try:
+        res = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": "OT2oBaEabBiJLpfBNPeEqA", "isbns": isbn})
+        data = res.json()
+        r_count = data["books"][0]["work_ratings_count"]
+        avg_r = data["books"][0]["average_rating"]
+    
+    except json.decoder.JSONDecodeError:
+        r_count = ""
+        avg_r = ""
     isbn = info.isbn
     title = info.title
     author = info.author
@@ -178,8 +210,8 @@ def api(isbn):
     return jsonify({
         "title": title,
         "author": author,
+        "year": year,
         "isbn": isbn,
-        "publication_year": year,
-        "ratings_count": r_count,
-        "average_ratings": avg_r
+        "review_count": r_count,
+        "average_score": avg_r
     })

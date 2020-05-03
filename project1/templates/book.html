@@ -29,6 +29,7 @@
             <p><span>Published year:</span> {{year}}</p>
             <p><span>Goodreads rating count:</span> {{ratings}}</p>
             <p><span>Goodreads ratings:</span> {{rating}}</p>
+            <p><span>Wisdom ratings:</span> {{wisdom_rating}}</p>
         </div>
         <div class="reviews">
             {% for usr,rev in reviews %}
@@ -38,14 +39,17 @@
                 <div style="margin-bottom: 5%;">
                     <h2>{{rev}} </h2>
                 </div>
-                {% endfor %}
+            {% endfor %}
             <h2><span>{{nreviews}}</span></h2>
             <div class="post">
-                <h2>{{post}}</h2>
                 <form action="/review" method="POST">
+                    <h3><span style="color: #a9a9a9; display: inline;">Rate Book:</span></h3>
+                    <input class="rat" type="number" value="3" min="1" max="5" step="1" name="rate">
+                    <h2>{{post}}</h2>
                     <h3><span style="color: #a9a9a9">Your thoughts:</span></h3>
                     <br>
                     <textarea name="review" rows="6" cols="90" style="font-size: 1vw;"></textarea>
+                    <h6 style="display: inline;">*note: You will be able to post only one review per book.</h6>
                     <input type="submit" class="logout default" name="post">
                 </form>
             </div>
