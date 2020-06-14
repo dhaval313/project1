@@ -192,7 +192,7 @@ def rev_post():
 def api(isbn):
     info = db.execute("select * from books where isbn = :isbn",{"isbn": isbn}).fetchone()
     if info is None:
-        return render_template("error.html", err= 404)
+        return jsonify({"N/A": "Not Available"}) 
     try:
         res = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": "OT2oBaEabBiJLpfBNPeEqA", "isbns": isbn})
         data = res.json()
