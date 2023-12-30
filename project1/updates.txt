@@ -1,0 +1,7 @@
+add re-enter password
+use emails instead of usernames
+add scroll
+add filter in search
+sorting in search by (new, old, ratings, review)
+
+
